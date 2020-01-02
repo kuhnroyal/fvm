@@ -1,5 +1,5 @@
 import 'package:test/test.dart';
-import 'package:fvm/utils/helpers.dart';
+import 'package:fvm/utils/flutter_tools.dart';
 
 void main() {
   test('Is Valid Flutter Version', () async {

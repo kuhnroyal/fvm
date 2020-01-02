@@ -1,7 +1,6 @@
 import 'package:args/command_runner.dart';
 import 'package:fvm/exceptions.dart';
 import 'package:fvm/utils/flutter_tools.dart';
-import 'package:fvm/utils/helpers.dart';
 import 'package:fvm/utils/logger.dart';
 import 'package:io/ansi.dart';
 
@@ -25,14 +24,13 @@ class InstallCommand extends Command {
       throw ExceptionMissingChannelVersion();
     }
     final version = argResults.arguments[0].toLowerCase();
-    final isChannel = isValidFlutterChannel(version);
+    if (await isSdkInstalled(version)) {
+      logger.stdout(green.wrap('$version is already installed.'));
+      return;
+    }
 
     final progress = logger.progress(green.wrap('Downloading $version'));
-    if (isChannel) {
-      await flutterChannelClone(version);
-    } else {
-      await flutterVersionClone(version);
-    }
+    await flutterVersionClone(version);
     finishProgress(progress);
   }
 }

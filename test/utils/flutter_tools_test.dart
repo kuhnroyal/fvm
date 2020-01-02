@@ -1,9 +1,6 @@
 @Timeout(Duration(minutes: 5))
-import 'dart:io';
-import 'package:fvm/constants.dart';
 import 'package:fvm/exceptions.dart';
 import 'package:test/test.dart';
-import 'package:path/path.dart' as path;
 import 'package:fvm/utils/flutter_tools.dart';
 
 void main() {
@@ -12,10 +9,10 @@ void main() {
       final invalidChannel = 'INVALID_CHANNEL';
 
       try {
-        await flutterChannelClone(invalidChannel);
-        fail("Exception not thrown");
+        await flutterVersionClone(invalidChannel);
+        fail('Exception not thrown');
       } on Exception catch (e) {
-        expect(e, TypeMatcher<ExceptionNotValidChannel>());
+        expect(e, const TypeMatcher<ExceptionNotValidVersion>());
       }
     });
 
@@ -24,22 +21,15 @@ void main() {
 
       try {
         await flutterVersionClone(invalidVersion);
-        fail("Exception not thrown");
+        fail('Exception not thrown');
       } on Exception catch (e) {
-        expect(e, TypeMatcher<ExceptionNotValidVersion>());
+        expect(e, const TypeMatcher<ExceptionNotValidVersion>());
       }
-    });
-    test('Checks that install is not correct', () async {
-      final invalidVersionName = 'INVALID_VERSION';
-      final dir = Directory(path.join(kVersionsDir.path, invalidVersionName));
-      await dir.create(recursive: true);
-      final correct = await checkInstalledCorrectly(invalidVersionName);
-      expect(correct, false);
     });
   });
 
   test('Lists Flutter SDK Tags', () async {
-    final flutterVersions = await flutterListAllSdks();
+    final flutterVersions = await listAllRemoteTags();
     final versionsExists = flutterVersions.contains('v1.8.0') &&
         flutterVersions.contains('v1.9.6') &&
         flutterVersions.contains('v1.10.5') &&

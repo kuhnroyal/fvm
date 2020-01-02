@@ -18,17 +18,6 @@ class ExceptionCouldNotClone implements Exception {
   String toString() => 'ExceptionCouldNotClone: $message';
 }
 
-/// Not a valid channel exception
-class ExceptionNotValidChannel implements Exception {
-  /// Version
-  final String message;
-
-  /// Constructor
-  const ExceptionNotValidChannel([this.message = '']);
-  @override
-  String toString() => 'ExceptionNotValidChannel: $message';
-}
-
 /// Not a valid version exception
 class ExceptionNotValidVersion implements Exception {
   /// Version

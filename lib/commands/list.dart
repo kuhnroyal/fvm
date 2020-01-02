@@ -19,7 +19,7 @@ class ListCommand extends Command {
 
   @override
   Future<void> run() async {
-    final choices = await flutterListInstalledSdks();
+    final choices = await listInstalledSdks();
 
     if (choices.isEmpty) {
       throw Exception('No SDKs have been installed yet.');

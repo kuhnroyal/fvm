@@ -1,13 +1,10 @@
 import 'package:args/command_runner.dart';
 import 'package:fvm/utils/flutter_tools.dart';
-import 'package:fvm/utils/helpers.dart';
 import 'package:fvm/utils/logger.dart';
 import 'package:io/ansi.dart';
 
 /// Use an installed SDK version
 class UseCommand extends Command {
-  // The [name] and [description] properties must be defined by every
-  // subclass.
   @override
   final name = 'use';
 
@@ -25,9 +22,9 @@ class UseCommand extends Command {
     }
     final version = argResults.arguments[0];
 
-    final isValidInstall = await isValidFlutterInstall(version);
+    final isInstalled = await isSdkInstalled(version);
 
-    if (!isValidInstall) {
+    if (!isInstalled) {
       final instruction = yellow.wrap('fvm install <version> first.');
       throw Exception(
           'Flutter $version is not installed. Please run $instruction');

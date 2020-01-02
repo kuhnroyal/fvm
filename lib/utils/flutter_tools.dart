@@ -4,7 +4,7 @@ import 'package:fvm/exceptions.dart';
 import 'package:fvm/utils/helpers.dart';
 import 'package:path/path.dart' as path;
 import 'package:io/io.dart';
-import 'package:fvm/utils/logger.dart';
+import 'package:git/git.dart';
 
 /// Runs a process
 Future<void> processRunner(String cmd, List<String> args,
@@ -24,28 +24,35 @@ Future<void> processRunner(String cmd, List<String> args,
   }
 }
 
-/// Clones Flutter SDK from Channel
-/// Returns true if comes from exists or false if its new fetch.
-Future<void> flutterChannelClone(String channel) async {
-  final channelDirectory = Directory(path.join(kVersionsDir.path, channel));
+/// Returns true it's a valid installed version
+Future<bool> isSdkInstalled(String version) async {
+  return (await listInstalledSdks()).contains(version);
+}
 
-  if (!isValidFlutterChannel(channel)) {
-    throw ExceptionNotValidChannel('"$channel" is not a valid channel');
+/// Returns true if it's a valid Flutter version number
+Future<bool> isValidFlutterVersion(String version) async {
+  if (kFlutterChannels.contains(version)) {
+    return true;
+  }
+  return (await listAllRemoteTags()).contains('v$version');
+}
+
+/// Setup Local Version Worktree
+Future<void> checkAndRunSetup() async {
+  // Create directory if it doesn't exist
+  if (await kVersionsDir.exists()) {
+    await kVersionsDir.create(recursive: true);
   }
 
-  // If it's installed correctly just return and use cached
-  if (await checkInstalledCorrectly(channel)) {
-    return;
-  }
+  // If its not a git directory clone it
+  if (!await GitDir.isGitDir(kVersionsDir.path)) {
+    var result = await Process.run('git', ['clone', kFlutterRepo, '.'],
+        workingDirectory: kVersionsDir.path);
 
-  await channelDirectory.create(recursive: true);
-
-  var result = await Process.run(
-      'git', ['clone', '-b', channel, kFlutterRepo, '.'],
-      workingDirectory: channelDirectory.path);
-
-  if (result.exitCode != 0) {
-    throw ExceptionCouldNotClone('Could not clone $channel: ${result.stderr}');
+    if (result.exitCode != 0) {
+      throw const ExceptionCouldNotClone(
+          'Could no setup local Flutter Install');
+    }
   }
 }
 
@@ -59,45 +66,48 @@ Future<void> checkIfGitExists() async {
   }
 }
 
-/// Clones Flutter SDK from Version Number
+/// Clones Flutter SDK from Version Number or Channel
 /// Returns exists:true if comes from cache or false if its new fetch.
 Future<void> flutterVersionClone(String version) async {
-  final versionDirectory = Directory(path.join(kVersionsDir.path, version));
-
   if (!await isValidFlutterVersion(version)) {
-    throw ExceptionNotValidVersion('"$version" is not a valid version');
+    throw ExceptionNotValidVersion(
+        '"$version" is not a valid version or channel');
   }
 
-  // If it's installed correctly just return and use cached
-  if (await checkInstalledCorrectly(version)) {
+  // Check if setup correctly if not do it.
+  await checkAndRunSetup();
+
+  // If it's master return
+  if (version == 'master') {
     return;
   }
 
-  await versionDirectory.create(recursive: true);
+  // Add v in front of version name
+  if (!kFlutterChannels.contains(version)) {
+    version = 'v$version';
+  }
 
   var result = await Process.run(
-      'git', ['clone', '-b', 'v$version', kFlutterRepo, '.'],
-      workingDirectory: versionDirectory.path);
+      'git', ['worktree', 'add', 'flutter-$version', version],
+      workingDirectory: kVersionsDir.path);
 
   if (result.exitCode != 0) {
     throw ExceptionCouldNotClone('Could not clone $version: ${result.stderr}');
   }
 }
 
-/// Gets Flutter version from project
-// Future<String> flutterGetProjectVersion() async {
-//   final target = await kLocalFlutterLink.target();
-//   print(target);
-//   return await _gitGetVersion(target);
-// }
-
 /// Gets SDK Version
-Future<String> flutterSdkVersion(String branch) async {
-  final branchDirectory = Directory(path.join(kVersionsDir.path, branch));
-  if (!await branchDirectory.exists()) {
+Future<String> getSDKVersion(String version) async {
+  // Master is always the root version
+  if (version == 'master') {
+    version = '.';
+  }
+  final versionDir = Directory(path.join(kVersionsDir.path, version));
+
+  if (!await versionDir.exists()) {
     throw Exception('Could not get version from SDK that is not installed');
   }
-  return await _gitGetVersion(branchDirectory.path);
+  return await _gitGetVersion(versionDir.path);
 }
 
 Future<String> _gitGetVersion(String path) async {
@@ -117,8 +127,8 @@ Future<String> _gitGetVersion(String path) async {
   return versionNumber;
 }
 
-/// Lists all Flutter SDK Versions
-Future<List<String>> flutterListAllSdks() async {
+/// Lists all Flutter SDK Tags/Versions available for downoad
+Future<List<String>> listAllRemoteTags() async {
   final result =
       await Process.run('git', ['ls-remote', '--tags', '$kFlutterRepo']);
 
@@ -132,6 +142,7 @@ Future<List<String>> flutterListAllSdks() async {
   for (var tag in tags) {
     final version = tag.split('refs/tags/');
 
+    // Add version name to the list
     if (version.length > 1) {
       versionsList.add(version[1]);
     }
@@ -141,53 +152,51 @@ Future<List<String>> flutterListAllSdks() async {
 }
 
 /// Removes a Version of Flutter SDK
-Future<void> flutterSdkRemove(String version) async {
-  final versionDir = Directory(path.join(kVersionsDir.path, version));
-  if (await versionDir.exists()) {
-    await versionDir.delete(recursive: true);
-  }
-}
-
-/// Check if version is from git
-Future<bool> checkInstalledCorrectly(String version) async {
-  final versionDir = Directory(path.join(kVersionsDir.path, version));
-  final gitDir = Directory(path.join(versionDir.path, '.github'));
-  final flutterBin = Directory(path.join(versionDir.path, 'bin'));
-  // Check if version directory exists
-  if (!await versionDir.exists()) {
-    return false;
+Future<void> removeSdk(String version) async {
+  if (version == 'master') {
+    version = '.';
   }
 
-  // Check if version directory is from git
-  if (!await gitDir.exists() || !await flutterBin.exists()) {
-    logger.stdout(
-        '$version exists but was not setup correctly. Doing cleanup...');
-    await flutterSdkRemove(version);
-    return false;
-  }
+  var result = await Process.run(
+      'git', ['worktree', 'remove', 'flutter-$version'],
+      workingDirectory: kVersionsDir.path);
 
-  return true;
+  if (result.exitCode != 0) {
+    throw Exception('Could not remove version');
+  }
 }
 
 /// Lists Installed Flutter SDK Version
-Future<List<String>> flutterListInstalledSdks() async {
+Future<List<String>> listInstalledSdks() async {
   try {
-    // Returns empty array if directory does not exist
-    if (!await kVersionsDir.exists()) {
-      return [];
+    await checkAndRunSetup();
+
+    final result = await Process.run('git', ['worktree', 'list'],
+        workingDirectory: kVersionsDir.path);
+
+    if (result.exitCode != 0) {
+      throw Exception('Could not list installed Flutter Sdks');
     }
 
-    final versions = await kVersionsDir.list().toList();
+    final versions = result.stdout.split('\n') as List<String>;
 
     var installedVersions = <String>[];
+
     for (var version in versions) {
-      if (await FileSystemEntity.type(version.path) ==
-          FileSystemEntityType.directory) {
-        installedVersions.add(path.basename(version.path));
+      if (version.isNotEmpty) {
+        const start = '[';
+        const end = ']';
+        final startIndex = version.indexOf(start);
+        final endIndex = version.indexOf(end, startIndex + start.length);
+
+        final versionName =
+            version.substring(startIndex + start.length, endIndex);
+        installedVersions.add(versionName);
       }
     }
 
     installedVersions.sort();
+
     return installedVersions;
   } on Exception {
     throw Exception('Could not list installed sdks');
